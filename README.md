@@ -1,172 +1,100 @@
 # AD User Tool
 
-AD User Tool — настольная утилита на Python и Tkinter для первичного оформления доменной учётной записи сотрудника. Программа принимает кадровые и контактные данные, формирует логин и начальный пароль, создаёт объект пользователя в Active Directory через LDAPS, назначает атрибуты и группы, а затем выпускает PowerShell-сценарий для домашнего каталога и персональный документ Microsoft Word.
+AD User Tool is a Python and Tkinter desktop utility for initial employee account provisioning. It accepts HR and contact data, generates a login and initial password, creates an Active Directory user over LDAPS, assigns attributes and groups, and then produces a PowerShell home-directory script and a personalised Microsoft Word document.
 
 > [!IMPORTANT]
-> Репозиторий содержит демонстрационный шаблон с вымышленными адресами, доменами, DN, группами и реквизитами организации. В текущем виде приложение нельзя использовать в рабочем домене: перед первым запуском необходимо настроить все значения, перечисленные в [руководстве по конфигурации](docs/CONFIGURATION.md), и выполнить проверку в изолированной тестовой OU.
+> This repository contains a demonstration template with fictional addresses, domains, distinguished names, groups, and organisation details. Do not use it in a production domain until every value listed in [CONFIGURATION.md](docs/CONFIGURATION.md) has been configured and the workflow has been verified in an isolated test OU.
 
-## Назначение
+## Scope
 
-Проект сокращает количество ручных действий при заведении нового сотрудника и помогает одинаково заполнять атрибуты Active Directory. Он рассчитан на администратора Windows-домена, который запускает приложение с рабочей станции, имеющей сетевой доступ к контроллеру домена и файловому серверу.
+The tool reduces repetitive work when onboarding an employee and helps populate AD attributes consistently. It is intended for a Windows-domain administrator whose workstation can reach the domain controller and file server.
 
-Утилита не является полноценной системой управления жизненным циклом учётных записей. Она выполняет один сценарий создания пользователя, не согласовывает заявку, не проверяет уникальность логина, не ведёт журнал операций и не откатывает уже выполненные изменения при частичном сбое.
+It is not a complete account-lifecycle platform. It performs one user-creation workflow, does not approve requests, does not check login uniqueness, does not maintain an audit log, and does not roll back completed operations after a partial failure.
 
-## Возможности текущей версии
+## Current capabilities
 
-| Возможность | Реализация |
-| --- | --- |
-| Графический интерфейс | Одно окно Tkinter с девятью полями и кнопкой создания |
-| Формирование логина | Первая буква имени и фамилия, затем транслитерация по схеме `iuliia.GOST_779_ALT` и удаление неалфавитно-цифровых символов |
-| Начальный пароль | 9 символов в фиксированном порядке: заглавная буква, строчная буква, шесть цифр и один знак `#`, `!` или `@` |
-| Подключение к AD | LDAP over SSL, TCP 636, аутентификация NTLM |
-| Создание пользователя | Заполнение имени, UPN, почты, должности, подразделения, телефонов, кабинета, описания и реквизитов организации |
-| Настройка учётной записи | Сброс пароля, разблокировка, включение обычной учётной записи и установка флага «пароль не истекает» |
-| Группы безопасности | Добавление созданного DN пользователя в заранее заданные группы |
-| Kerio Connect | Необязательные LDAP-атрибуты `kerio-Mail-AccountEnabled` и `kerio-Mail-Active` |
-| Домашняя папка | Генерация отдельного PowerShell-файла, который задаёт диск `Z:`, создаёт каталог и назначает ACL `Modify` |
-| Документ сотрудника | Формирование `.docx` из `welcome2.docx` через DocxTemplate |
-| Русская раскладка | Обработка `Ctrl+C`, `Ctrl+X` и `Ctrl+V` в полях ввода при русской раскладке |
-| Сборка | PyInstaller в режиме `--onefile --noconsole` через `build.ps1` |
+- Tkinter interface with nine input fields.
+- Login generation from the first-name initial and surname using `iuliia.GOST_779_ALT` transliteration.
+- Nine-character initial passwords using the current fixed character pattern.
+- LDAPS on TCP 636 with NTLM authentication.
+- User creation with UPN, email, title, department, phone, office, description, and organisation attributes.
+- Password reset, account unlock and enablement, and the current non-expiring-password flag.
+- Membership in configured security groups.
+- Optional Kerio Connect LDAP attributes.
+- A generated PowerShell script for drive `Z:`, directory creation, and `Modify` ACLs.
+- A personalised `.docx` built from `welcome2.docx` with DocxTemplate.
+- PyInstaller `--onefile --noconsole` packaging through `build.ps1`.
 
-## Как проходит создание пользователя
+## Workflow
 
 ```mermaid
 flowchart TD
-    A["Данные сотрудника"] --> B["Проверка обязательных полей"]
-    B --> C["Логин и начальный пароль"]
-    C --> D["Создание и настройка объекта AD"]
-    D --> E["Добавление в группы"]
-    E --> F["PowerShell для домашней папки"]
-    F --> G["Приветственный документ DOCX"]
+    A["Employee data"] --> B["Required-field validation"]
+    B --> C["Login and initial password"]
+    C --> D["Create and configure AD object"]
+    D --> E["Add security groups"]
+    E --> F["Generate home-directory PowerShell"]
+    F --> G["Generate welcome DOCX"]
 ```
 
-LDAP-часть выполняется первой. Если подключение к домену вызывает исключение, генерация локальных файлов не начинается. Ошибка при создании PowerShell-файла или документа Word показывается как предупреждение, но уже созданная учётная запись при этом не удаляется.
+LDAP work runs first. If the domain connection raises an exception, local output files are not created. A later PowerShell or Word-generation failure is shown as a warning, but the already-created AD account is not removed.
 
-## Системные требования
+## Requirements
 
-| Компонент | Требование |
-| --- | --- |
-| Операционная система | Windows 10/11 или Windows Server с графическим сеансом |
-| Python | Для запуска из исходников рекомендуется Python 3.12; совместимость с иными версиями должна проверяться отдельно |
-| Сеть | Доступ к контроллеру домена по TCP 636 и к целевому файловому серверу |
-| Active Directory | Сервисная учётная запись с делегированными правами на целевую OU, нужные атрибуты и группы |
-| Сертификат LDAPS | Сертификат контроллера домена и доверенная цепочка; безопасная проверка сертификата требует доработки текущей конфигурации `ldap3` |
-| Шаблон | Файл `welcome2.docx` в текущем рабочем каталоге приложения |
-| PowerShell-сценарий | Модуль `ActiveDirectory` и права на изменение пользователя, создание каталога и ACL |
-| Microsoft Word | Не требуется для генерации `.docx`; нужен только Word или совместимый редактор для просмотра результата |
+- Windows 10/11 or Windows Server with a graphical session.
+- Python 3.12 recommended for source execution.
+- TCP 636 access to the domain controller and access to the target file server.
+- A least-privilege service account delegated to the target OU and groups.
+- A trusted LDAPS certificate chain; strict certificate verification still requires configuration work.
+- `welcome2.docx` in the application's working directory.
+- The PowerShell `ActiveDirectory` module and permissions for user, directory, and ACL changes.
 
-## Быстрый запуск из исходников
-
-Клонируйте репозиторий и перейдите в его каталог:
+## Run from source
 
 ```powershell
 git clone https://github.com/NetGraniz/ad_user_tool.git
 Set-Location ad_user_tool
-```
-
-Создайте и активируйте виртуальное окружение:
-
-```powershell
 py -3.12 -m venv .venv
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
-```
-
-Установите зависимости:
-
-```powershell
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-```
-
-До запуска замените демонстрационные значения в `ad_user_tool.py`. Полная карта параметров, DN и атрибутов приведена в [CONFIGURATION.md](docs/CONFIGURATION.md).
-
-Запустите приложение из корня проекта, чтобы относительный путь к шаблону Word разрешился правильно:
-
-```powershell
 python .\ad_user_tool.py
 ```
 
-## Работа с программой
+Replace every demonstration value before launch. The full map of domains, DNs, groups, attributes, and file-server settings is in [CONFIGURATION.md](docs/CONFIGURATION.md).
 
-Заполните обязательные поля «Фамилия», «Имя», «Должность», «Подразделение» и «Кабинет». Телефоны, номер рабочего места и описание можно оставить пустыми. Перед нажатием кнопки создания проверьте написание ФИО: программа применяет `.title()`, поэтому регистр аббревиатур может измениться.
+Required fields are surname, first name, title, department, and office. After successful completion, the application displays the login and initial password and writes `<login>.ps1` plus `<Surname Firstname>.docx` to the working directory. Review the generated PowerShell script before running it with delegated credentials. See [USAGE.md](docs/USAGE.md).
 
-После нажатия `To create` приложение выполняет все операции последовательно. При успешном завершении на экране показываются логин и начальный пароль, а в текущем рабочем каталоге появляются файлы `<логин>.ps1` и `<Фамилия Имя>.docx`.
-
-PowerShell-файл не запускается автоматически. Администратор должен проверить путь, букву диска и модель разрешений, после чего выполнить сценарий в контексте учётной записи с необходимыми правами. Подробный рабочий регламент приведён в [USAGE.md](docs/USAGE.md).
-
-## Сборка EXE
-
-Сценарий сборки удаляет старые каталоги `build` и `dist`, активирует `.venv`, определяет путь к схемам `iuliia` и передаёт их PyInstaller:
+## Build
 
 ```powershell
 .\build.ps1
 ```
 
-Результат создаётся по адресу:
+The executable is written to `dist\ad_user_tool.exe`. Transliteration schemas are bundled, but `welcome2.docx` is not; place the template beside the EXE or change the resource lookup strategy. See [DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-```text
-dist\ad_user_tool.exe
-```
+## Documentation
 
-Текущий `build.ps1` включает в EXE схемы транслитерации, но не включает `welcome2.docx`. Для работы собранного приложения положите шаблон рядом с EXE и запускайте программу из этого каталога либо измените стратегию поиска ресурсов. Детали сборки и отладки описаны в [DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- [Configuration](docs/CONFIGURATION.md) — domains, OUs, groups, Kerio, file server, and templates.
+- [Usage](docs/USAGE.md) — operator workflow and result verification.
+- [Architecture](docs/ARCHITECTURE.md) — operation order and extension points.
+- [Development](docs/DEVELOPMENT.md) — environment, build, diagnostics, and checks.
+- [Troubleshooting](docs/TROUBLESHOOTING.md) — LDAP, Word, PowerShell, and PyInstaller failures.
+- [Security](SECURITY.md) — risks and production-readiness requirements.
 
-## Структура репозитория
+## Critical limitations
 
-| Путь | Назначение |
-| --- | --- |
-| `ad_user_tool.py` | Интерфейс, генерация реквизитов, LDAP-операции и создание выходных файлов |
-| `welcome2.docx` | Шаблон персонального документа с переменными DocxTemplate |
-| `requirements.txt` | Зафиксированные прямые и транзитивные зависимости среды разработки |
-| `build.ps1` | Очистка предыдущей сборки и создание однофайлового EXE через PyInstaller |
-| `.gitignore` | Исключения для виртуального окружения, кэша Python, результатов сборки и IDE |
-| `docs/CONFIGURATION.md` | Настройка домена, OU, групп, Kerio, файлового сервера и шаблона |
-| `docs/USAGE.md` | Пошаговый эксплуатационный регламент и проверка результата |
-| `docs/ARCHITECTURE.md` | Архитектура, последовательность операций и точки расширения |
-| `docs/DEVELOPMENT.md` | Среда разработки, сборка, диагностика и проверка изменений |
-| `docs/TROUBLESHOOTING.md` | Причины типовых ошибок LDAP, Word, PowerShell и PyInstaller |
-| `SECURITY.md` | Риски текущей реализации и требования перед рабочим внедрением |
+The current code does not inspect the result objects returned by every `conn.add()` and `conn.modify()` call. Some `ldap3` directory failures may therefore not raise an exception; a **Done** dialog does not prove that every change succeeded. Verify the AD object, group membership, and home directory after every run.
 
-## Документация
+Login availability is not checked. Duplicate surnames, initials, and compound names may collide. The initial password uses Python's `random` module rather than the `secrets` module. `userAccountControl = 66048` enables a standard account and disables password expiry. These decisions must be replaced or explicitly approved by organisational policy before production use.
 
-| Раздел | Когда использовать |
-| --- | --- |
-| [Конфигурация](docs/CONFIGURATION.md) | Перед первым подключением к тестовому или рабочему домену |
-| [Эксплуатация](docs/USAGE.md) | При оформлении нового сотрудника и проверке результатов |
-| [Архитектура](docs/ARCHITECTURE.md) | При сопровождении кода и планировании новых функций |
-| [Разработка и сборка](docs/DEVELOPMENT.md) | При изменении исходников или выпуске EXE |
-| [Диагностика](docs/TROUBLESHOOTING.md) | При ошибках подключения, LDAP-операций, шаблона или сборки |
-| [Безопасность](SECURITY.md) | Перед передачей приложения администраторам и вводом в эксплуатацию |
+The service-account credential is currently stored in source code. Never commit real credentials, distribute a configured EXE, or use Domain Admin. Move configuration and secrets out of source, use cryptographically secure password generation, validate LDAP results and certificates, handle login collisions, and add audit logging and tests before production deployment.
 
-## Критические ограничения текущей реализации
+## Verification checklist
 
-Вызовы `conn.add()` и `conn.modify()` возвращают результат операции, однако код его не проверяет. При стандартном режиме `ldap3` некоторые ошибки каталога могут не вызвать исключение, поэтому окно `Done` само по себе не подтверждает, что все изменения применены. После каждого запуска необходимо проверять объект в AD, членство в группах и домашний каталог.
+Verify source startup, required-field rejection, deterministic transliteration, trusted LDAPS, correct OU attributes, password and UAC policy, group membership, the generated home-directory ACLs, DOCX replacement fields, and execution of the packaged EXE on a clean test machine.
 
-Логин не проверяется на занятость. Повторная фамилия, одинаковые инициалы, составные имена и фамилии могут привести к коллизии или неожиданному имени входа. Пароль создаётся модулем `random`, который документация Python не рекомендует для генерации секретов. Значение `userAccountControl = 66048` включает обычную учётную запись и запрещает истечение пароля. Эти решения должны быть заменены или явно утверждены политикой организации до рабочего применения.
+This project is a working prototype and administration-automation demonstration.
 
-Секрет сервисной учётной записи сейчас хранится непосредственно в исходном коде. Не публикуйте реальные реквизиты в Git, не передавайте собранный EXE третьим лицам и не используйте административную учётную запись уровня Domain Admin. Полный перечень защитных мер приведён в [SECURITY.md](SECURITY.md).
-
-## Проверка после изменений
-
-| Проверка | Ожидаемый результат |
-| --- | --- |
-| Запуск из исходников | Окно открывается без traceback |
-| Обязательные поля | Пустое значение останавливает операцию до подключения к AD |
-| Транслитерация | Для контрольных ФИО получается ожидаемый уникальный `sAMAccountName` |
-| LDAPS | Соединение устанавливается с доверенным контроллером домена |
-| Создание объекта | Пользователь находится в заданной OU со всеми ожидаемыми атрибутами |
-| Пароль и UAC | Вход возможен, а параметры срока действия соответствуют политике |
-| Группы | Пользователь добавлен во все настроенные группы |
-| PowerShell | Сценарий создаёт домашний каталог, задаёт `Z:` и ожидаемые ACL |
-| Word | Документ открывается, а все четыре переменные заменены значениями |
-| Сборка | `dist\ad_user_tool.exe` запускается на чистой тестовой машине |
-
-## Статус проекта
-
-Проект представляет собой рабочий прототип и демонстрацию автоматизации администрирования Active Directory. Перед промышленным использованием требуются вынос конфигурации и секретов из кода, криптографически стойкая генерация паролей, проверка результатов LDAP, защита LDAPS-сертификата, обработка коллизий логинов, журналирование и тесты.
-
-В репозитории отсутствует файл лицензии. До добавления лицензии условия копирования, изменения и распространения проекта явно не определены.
-
-## Официальные справочные материалы
-
-Документация проекта опирается на [рекомендации Python по генерации секретов](https://docs.python.org/3/library/secrets.html), [описание флагов `userAccountControl` Microsoft](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/useraccountcontrol-manipulate-account-properties), [руководство ldap3 по SSL/TLS](https://ldap3.readthedocs.io/en/latest/ssltls.html) и [руководство PyInstaller по добавлению файлов данных](https://pyinstaller.org/en/stable/spec-files.html#adding-data-files).
+Licensed under the MIT License. See [LICENSE](LICENSE).
