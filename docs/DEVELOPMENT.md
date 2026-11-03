@@ -1,14 +1,14 @@
-# Разработка и сборка AD User Tool
+# AD User Tool Development and Build Guide
 
-## Рабочая среда
+## Development environment
 
-Проект ориентирован на Windows, поскольку использует графический Tkinter-интерфейс, NTLM-подключение к Active Directory, PowerShell и сборку Windows EXE. Разрабатывать отдельные чистые функции можно и на другой ОС, но полноценную проверку необходимо выполнять в Windows-среде, подключённой к изолированному тестовому домену.
+The complete application targets Windows because it uses Tkinter, NTLM authentication to Active Directory, PowerShell, and Windows EXE packaging. Pure helper functions can be developed on another operating system, but end-to-end verification requires Windows connected to an isolated test domain.
 
-В текущем репозитории нет автоматических тестов, линтера, форматтера, CI и файла метаданных пакета. Основной исполняемый файл запускается напрямую.
+The repository currently has no automated tests, linter, formatter, CI configuration, or Python package metadata. The main file is executed directly.
 
-## Создание окружения
+## Create the environment
 
-Из корня клонированного репозитория выполните:
+From the cloned repository root, run:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -18,44 +18,46 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Проверить, какой интерпретатор используется в текущем окне, можно так:
+Confirm the active interpreter:
 
 ```powershell
 python -c "import sys; print(sys.executable); print(sys.version)"
 ```
 
-Путь должен указывать на `.venv\Scripts\python.exe`.
+The path should point to `.venv\Scripts\python.exe`.
 
-## Состав зависимостей
+## Dependencies
 
-`requirements.txt` содержит точные версии как библиотек выполнения, так и инструментов сборки. Файл похож на результат `pip freeze`, поэтому прямые зависимости не отделены от транзитивных.
+`requirements.txt` pins both runtime libraries and build tools. It resembles a `pip freeze` snapshot, so direct dependencies are not separated from transitive dependencies.
 
-| Категория | Пакеты текущего файла |
+| Category | Packages |
 | --- | --- |
 | LDAP | `ldap3`, `pyasn1` |
-| Word-шаблоны | `docxtpl`, `python-docx`, `docxcompose`, `Jinja2`, `MarkupSafe`, `lxml`, `babel`, `six`, `typing_extensions` |
-| Транслитерация | `iuliia` |
-| Сборка | `pyinstaller`, `pyinstaller-hooks-contrib`, `altgraph`, `packaging`, `pefile`, `pywin32-ctypes` |
+| Word templates | `docxtpl`, `python-docx`, `docxcompose`, `Jinja2`, `MarkupSafe`, `lxml`, `babel`, `six`, `typing_extensions` |
+| Transliteration | `iuliia` |
+| Build | `pyinstaller`, `pyinstaller-hooks-contrib`, `altgraph`, `setuptools`, `packaging`, `pefile`, `pywin32-ctypes` |
 
-Tkinter входит в стандартную установку Python для Windows и поэтому отсутствует в `requirements.txt`.
+Tkinter is part of the standard Windows Python installation and is not listed in `requirements.txt`.
 
-Не обновляйте зависимости командой `pip freeze > requirements.txt` без проверки diff. Она фиксирует все пакеты текущего окружения, включая случайно установленные. Для следующего этапа развития стоит разделить минимальные runtime-зависимости и инструменты разработки.
+Do not replace the dependency file with an unchecked `pip freeze > requirements.txt`. That command records every package in the active environment, including accidental installations. A future cleanup should separate minimal runtime dependencies from development tools.
 
-## Запуск исходного кода
+`setuptools` is pinned to 80.8.0 because the pinned `altgraph 0.17.4` imports `pkg_resources`. Setuptools 80.9 promotes that use to a visible warning, and version 82 removes the module. Upgrade altgraph and PyInstaller together before removing this compatibility pin.
 
-До подключения к реальному каталогу настройте тестовый сервер, OU и группы. Затем выполните:
+## Run from source
+
+Configure a test server, OU, and groups before connecting to a directory. Then run:
 
 ```powershell
 python .\ad_user_tool.py
 ```
 
-Запуск из консоли предпочтителен при разработке: traceback и сообщения библиотек остаются видимыми. В `--noconsole`-сборке эта информация скрыта.
+Console execution is preferable during development because tracebacks and library messages remain visible. A `--noconsole` build hides them.
 
-Для проверки только импорта модулей без запуска отдельного тестового entry point текущий файл не подходит: GUI создаётся на верхнем уровне, и импорт откроет окно и войдёт в `mainloop()`. Перед добавлением модульных тестов перенесите запуск под защиту:
+The current file cannot be imported safely for unit testing because it creates the GUI at module level and enters `mainloop()`. Before adding tests, place startup behind a guard:
 
 ```python
 def main():
-    # создание root и виджетов
+    # Create root and widgets.
     root.mainloop()
 
 
@@ -63,17 +65,15 @@ if __name__ == "__main__":
     main()
 ```
 
-## Текущий сценарий сборки
+## Current build script
 
-`build.ps1` выполняет четыре операции: удаляет старые `build` и `dist`, активирует `.venv`, получает каталог `iuliia\schemas`, затем запускает PyInstaller.
-
-Запуск:
+`build.ps1` deletes old `build` and `dist` directories, activates `.venv`, resolves the `iuliia\schemas` directory, and invokes PyInstaller.
 
 ```powershell
 .\build.ps1
 ```
 
-Эквивалентная команда PyInstaller имеет смысл:
+The equivalent PyInstaller command is:
 
 ```powershell
 pyinstaller `
@@ -85,31 +85,31 @@ pyinstaller `
     ad_user_tool.py
 ```
 
-| Параметр | Эффект |
+| Option | Effect |
 | --- | --- |
-| `--clean` | Очищает кэш и временные файлы PyInstaller |
-| `--onefile` | Упаковывает приложение и зависимости в один EXE |
-| `--noconsole` | Не открывает консоль при запуске GUI |
-| `--name` | Задаёт имя `ad_user_tool.exe` |
-| `--add-data` | Включает схемы iuliia, необходимые для транслитерации |
+| `--clean` | Clears PyInstaller cache and temporary files |
+| `--onefile` | Bundles the application and dependencies into one EXE |
+| `--noconsole` | Prevents a console window from opening with the GUI |
+| `--name` | Sets the output name to `ad_user_tool.exe` |
+| `--add-data` | Includes the iuliia schemas required for transliteration |
 
-Результат находится в `dist\ad_user_tool.exe`. Каталоги `build`, `dist` и файлы `*.spec` исключены через `.gitignore`.
+The executable is written to `dist\ad_user_tool.exe`. `build`, `dist`, and `*.spec` are ignored by Git.
 
-## Внешний шаблон Word
+## External Word template
 
-Команда сборки не содержит:
+The build command does not include:
 
 ```text
 --add-data "welcome2.docx;."
 ```
 
-Поэтому `welcome2.docx` не упаковывается в EXE. Текущий Python-код также не обращается к каталогу временной распаковки PyInstaller; он просто открывает файл по относительному пути текущего процесса.
+`welcome2.docx` is therefore not bundled. The Python code also does not resolve the PyInstaller extraction directory; it opens a relative path from the current working directory.
 
-Рабочий вариант без изменения кода — распространять EXE и шаблон вместе и задавать правильную рабочую папку ярлыка. Если шаблон должен входить внутрь EXE, добавьте его через `--add-data` и реализуйте функцию разрешения ресурса, учитывающую обычный запуск и `sys._MEIPASS`. Официальное руководство PyInstaller описывает файлы данных в разделе [Adding Data Files](https://pyinstaller.org/en/stable/spec-files.html#adding-data-files).
+Without source changes, distribute the EXE and template together and configure the shortcut's working directory. To bundle the template, add it through `--add-data` and implement resource lookup for both normal execution and `sys._MEIPASS`. See the PyInstaller guide on [Adding Data Files](https://pyinstaller.org/en/stable/spec-files.html#adding-data-files).
 
-## Диагностическая сборка
+## Diagnostic build
 
-При необъяснимом закрытии или отсутствии результата временно соберите приложение с консолью:
+If the application closes without an explanation, build a temporary console version:
 
 ```powershell
 pyinstaller `
@@ -120,51 +120,51 @@ pyinstaller `
     ad_user_tool.py
 ```
 
-Отсутствие `--noconsole` позволяет увидеть traceback. Диагностический EXE не следует распространять как рабочий выпуск, если консоль может раскрывать внутренние пути или другие служебные данные.
+Omitting `--noconsole` exposes tracebacks. Do not distribute the diagnostic EXE as a production release if its console can reveal internal paths or other operational details.
 
-## Проверка синтаксиса и импортов
+## Syntax and import checks
 
-Минимальная проверка Python-файла без выполнения GUI:
+Compile the Python source without starting the GUI:
 
 ```powershell
 python -m py_compile .\ad_user_tool.py
 ```
 
-Проверка наличия ключевых библиотек:
+Check key imports:
 
 ```powershell
 python -c "import ldap3, iuliia, docxtpl; print(ldap3.__version__, iuliia.__version__)"
 ```
 
-Не все пакеты обязаны публиковать `__version__`; если конкретная версия iuliia не имеет такого атрибута, используйте:
+Not every package exposes `__version__`. If the installed iuliia version does not, use:
 
 ```powershell
 python -m pip show ldap3 iuliia docxtpl pyinstaller
 ```
 
-## Ручная тестовая матрица
+## Manual test matrix
 
-| Область | Сценарий | Ожидаемый результат |
+| Area | Scenario | Expected result |
 | --- | --- | --- |
-| GUI | Запуск исходника и EXE | Окно 400×300 открывается по центру |
-| Валидация | Каждое обязательное поле поочерёдно пустое | Появляется `Error`, LDAP не вызывается |
-| Буфер обмена | Copy/Cut/Paste в английской и русской раскладке | Значения копируются и вставляются один раз |
-| ФИО | Кириллица, дефис, `ё`, пробелы, составная фамилия | Результат зафиксирован и соответствует принятому правилу |
-| Коллизия | Логин уже существует | Ошибка распознана, существующая запись не меняется |
-| Пароль | Доменная политика строже текущего формата | Оператор получает однозначную ошибку, объект не считается готовым |
-| LDAPS | Доверенный и недоверенный сертификат | Доверенный принимается, недоверенный отклоняется после доработки TLS |
-| OU | Корректный и несуществующий DN | Успех либо диагностируемый `noSuchObject` |
-| Права | Сервисная запись без одного разрешения | Частичный результат распознаётся и не маскируется `Done` |
-| Группы | Валидная и несуществующая группа | Ошибка привязана к конкретному DN |
-| Kerio | Схема с атрибутами и без них | Конфигурация выбирает допустимый набор полей |
-| PS1 | Новый и уже существующий каталог | ACL и HomeDirectory остаются предсказуемыми |
-| DOCX | Шаблон на месте, отсутствует, повреждён | Успех либо понятное предупреждение |
-| Путь | Каталог без права записи | Ошибка не влияет на уже созданный объект без уведомления |
-| Сборка | Чистая тестовая машина без Python | EXE запускается, iuliia работает, внешний шаблон найден |
+| GUI | Start source and EXE | A 400 by 300 window opens in the center |
+| Validation | Leave each required field empty in turn | `Error` appears and LDAP is not called |
+| Clipboard | Copy, Cut, and Paste under English and Russian layouts | Values are transferred exactly once |
+| Names | Non-Latin text, hyphens, spaces, and compound surnames | The result is recorded and follows the approved rule |
+| Collision | The generated login already exists | The error is recognized and the existing object is unchanged |
+| Password | Domain policy is stricter than the generated format | The operator receives a clear failure and the account is not reported as ready |
+| LDAPS | Trusted and untrusted certificates | The trusted certificate succeeds and the untrusted one fails after TLS hardening |
+| OU | Valid and nonexistent DNs | Success or a clearly diagnosed `noSuchObject` |
+| Permissions | The service account lacks one permission | Partial success is recognized and not hidden by `Done` |
+| Groups | Valid and nonexistent group | The failure identifies the affected DN |
+| Kerio | Schemas with and without Kerio attributes | Configuration selects only supported fields |
+| PS1 | New and existing directory | ACL and HomeDirectory remain predictable |
+| DOCX | Present, missing, and corrupted template | Success or a clear warning |
+| Path | Working directory is not writable | The operator is told that the local artifact failed after any AD change |
+| Build | Clean Windows machine without Python | The EXE starts, iuliia works, and the external template is found |
 
-## Проверка LDAP-результатов при разработке
+## Checking LDAP results during development
 
-После каждого изменяющего вызова необходимо проверять булево значение и `conn.result`. Принцип безопасной обёртки:
+Inspect the Boolean return value and `conn.result` after every modifying call. A minimal wrapper is:
 
 ```python
 def require_ldap_success(connection, ok: bool, operation: str) -> None:
@@ -175,34 +175,34 @@ def require_ldap_success(connection, ok: bool, operation: str) -> None:
         raise RuntimeError(f"{operation}: {description}: {message}")
 ```
 
-Применение:
+Use it as follows:
 
 ```python
 ok = conn.add(user_dn, "user", attributes)
 require_ldap_success(conn, ok, "Create AD user")
 ```
 
-Расширения Microsoft также должны проверяться. В журнал не следует записывать пароль и полный контекст Word.
+Microsoft extension calls must also be checked. Never write passwords or the complete Word context to logs.
 
-## Предлагаемый минимальный набор автоматических тестов
+## Suggested automated tests
 
-| Тест | Изоляция |
+| Test | Isolation strategy |
 | --- | --- |
-| Формат пароля | Подмена источника случайности и проверка классов/длины |
-| Логин | Таблица кириллических ФИО, дефисы, `ё`, составные значения |
-| Валидация | Чистая функция без Tkinter, возвращающая ошибки полей |
-| LDAP-атрибуты | Сравнение сформированного словаря с эталоном |
-| LDAP-ошибки | Mock-стратегия ldap3 или тестовый AD с контролируемыми ответами |
-| PowerShell-шаблон | Проверка пути, логина и отсутствия неподставленных маркеров |
-| Word-контекст | Рендеринг временной копии и проверка XML документа |
-| Ресурсы EXE | Smoke-тест на чистой Windows VM |
+| Password format | Replace the random source and verify length and character classes |
+| Login generation | Table-driven non-Latin names, hyphens, and compound values |
+| Validation | Pure function returning field errors without Tkinter |
+| LDAP attributes | Compare the generated dictionary with an expected fixture |
+| LDAP failures | ldap3 mock strategy or a test AD with controlled responses |
+| PowerShell template | Verify the path, login, and absence of unresolved markers |
+| Word context | Render a temporary copy and inspect the document XML |
+| EXE resources | Smoke test on a clean Windows VM |
 
-## Версионирование и выпуск
+## Versioning and release
 
-Перед выпуском зафиксируйте версию приложения в одном месте, обновите документацию при изменении атрибутов или порядка операций, соберите EXE в чистом виртуальном окружении, проверьте хэш артефакта и подпишите файл корпоративным сертификатом кода, если это предусмотрено инфраструктурой.
+Before release, define the application version in one place, update documentation when attributes or operation order change, build the EXE in a clean virtual environment, record its hash, and sign it with a corporate code-signing certificate when required.
 
-Не коммитьте `dist`, `.venv`, реальный шаблон с данными сотрудников, локальные `.ps1`, созданные `.docx`, сертификаты с закрытыми ключами и файлы с секретами. Текущий `.gitignore` не исключает автоматически создаваемые `<login>.ps1` и `<Фамилия Имя>.docx`; перед каждым коммитом проверяйте `git status`.
+Do not commit `dist`, `.venv`, a real employee template, generated `.ps1` or `.docx` files, private-key certificates, or secret files. Generated `<login>.ps1` and `<Surname First name>.docx` are not automatically ignored, so check `git status` before every commit.
 
-## Связанные разделы
+## Related documentation
 
-Архитектура описана в [ARCHITECTURE.md](ARCHITECTURE.md), конфигурация — в [CONFIGURATION.md](CONFIGURATION.md), диагностика — в [TROUBLESHOOTING.md](TROUBLESHOOTING.md), безопасность — в [SECURITY.md](../SECURITY.md).
+See [Architecture](ARCHITECTURE.md), [Configuration](CONFIGURATION.md), [Troubleshooting](TROUBLESHOOTING.md), and [Security](../SECURITY.md).

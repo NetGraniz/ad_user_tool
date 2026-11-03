@@ -1,57 +1,57 @@
-# Конфигурация AD User Tool
+# AD User Tool Configuration
 
-## Общий принцип
+## Configuration model
 
-Текущая версия не имеет отдельного конфигурационного файла. Параметры домена, группы, реквизиты организации, домены почты и путь к файловому серверу записаны непосредственно в функции `create_user()` файла `ad_user_tool.py`. Перед первым запуском необходимо заменить каждый демонстрационный маркер и проверить результат в тестовой организационной единице.
+The current version has no separate configuration file. Domain settings, groups, organization details, mail domains, and the file-server path are defined directly inside `create_user()` in `ad_user_tool.py`. Replace every demonstration marker before the first run and validate the result in an isolated test OU.
 
-Не вносите рабочий пароль сервисной учётной записи в коммит. Для промышленной версии вынесите секрет в переменную среды, Windows Credential Manager или корпоративное хранилище секретов. Остальные параметры целесообразно перенести в отдельный локальный файл конфигурации, исключённый из Git.
+Never commit a production service-account password. A production design should retrieve it from Windows Credential Manager or an approved corporate secret store. Move non-secret settings to a separate local configuration file excluded from Git.
 
-## Карта параметров исходного кода
+## Source-code settings
 
-| Значение в коде | Назначение | Пример формата |
+| Value | Purpose | Example format |
 | --- | --- | --- |
-| `AD_SERVER` | Контроллер домена для LDAPS | `dc01.example.local` |
-| `AD_USER` | Учётная запись, от имени которой выполняются LDAP-операции | `EXAMPLE\\svc_ad_provision` |
-| `AD_PASSWORD` | Пароль сервисной учётной записи | Получать из защищённого внешнего источника |
-| `usersOU` | Distinguished Name целевой OU | `OU=Employees,OU=Users,DC=example,DC=local` |
-| `@Your domain` в `userPrincipalName` | UPN-суффикс домена | `@example.local` или утверждённый альтернативный UPN |
-| `@Your domain` в `mail` | Основной почтовый домен | `@example.com` |
-| `company` | Название организации в атрибуте пользователя | `Example LLC` |
-| `st` | Регион или субъект | Значение по правилам вашей адресной книги |
-| `streetAddress` | Адрес организации | Строка почтового адреса |
-| `c` | Код страны, принимаемый схемой AD | Обычно двухбуквенное значение, например `RU` |
-| `countryCode` | Числовой код страны в схеме AD | Числовое значение, принятое в организации |
-| `l` | Город | `Moscow` |
-| `postalCode` | Почтовый индекс | Строка индекса |
-| `kerio-Mail-AccountEnabled` | Включение почтовой учётной записи Kerio | `1`, только если атрибут существует в схеме |
-| `kerio-Mail-Active` | Домен или служебное значение Kerio | Значение, ожидаемое вашей интеграцией Kerio |
-| `groups` | Полные DN групп, куда добавляется сотрудник | `CN=AllUsers,OU=Groups,DC=example,DC=local` |
-| `$fullPath` в генерируемом PS1 | Корень домашних каталогов | `\\files01.example.local\Users\<login>` |
-| `$driveLetter` | Буква домашнего диска | `Z:` |
-| `@your domain` в контексте Word | Почтовый домен в документе | `@example.com` |
-| `welcome2.docx` | Относительный путь к шаблону | Файл в текущем рабочем каталоге |
+| `AD_SERVER` | Domain controller used for LDAPS | `dc01.example.local` |
+| `AD_USER` | Account used for LDAP operations | `EXAMPLE\\svc_ad_provision` |
+| `AD_PASSWORD` | Service-account password | Retrieve from a protected external source |
+| `usersOU` | Distinguished Name of the target OU | `OU=Employees,OU=Users,DC=example,DC=local` |
+| `@Your domain` in `userPrincipalName` | UPN suffix | `@example.local` or an approved alternate UPN |
+| `@Your domain` in `mail` | Primary email domain | `@example.com` |
+| `company` | Organization name stored on the user | `Example LLC` |
+| `st` | State or region | Value defined by the corporate directory standard |
+| `streetAddress` | Organization address | Postal-address string |
+| `c` | Country code accepted by the AD schema | Usually a two-letter value such as `US` |
+| `countryCode` | Numeric country code used by the AD schema | Organization-approved numeric value |
+| `l` | City | `London` |
+| `postalCode` | Postal code | Postal-code string |
+| `kerio-Mail-AccountEnabled` | Enables a Kerio mail account | `1`, only when the schema contains this attribute |
+| `kerio-Mail-Active` | Kerio domain or service value | Value expected by the Kerio integration |
+| `groups` | Full DNs of groups assigned to the employee | `CN=AllUsers,OU=Groups,DC=example,DC=local` |
+| `$fullPath` in the generated PS1 | Home-directory root | `\\files01.example.local\Users\<login>` |
+| `$driveLetter` | Home-drive letter | `Z:` |
+| `@your domain` in the Word context | Email domain used in the document | `@example.com` |
+| `welcome2.docx` | Relative template path | File in the current working directory |
 
-Поиск всех незаменённых маркеров перед тестом можно выполнить из корня репозитория:
+Search for unresolved demonstration markers from the repository root:
 
 ```powershell
 Select-String -Path .\ad_user_tool.py -Pattern 'Replace|Your domain|your domain|IP of AD server|the address of the server'
 ```
 
-Команда должна вернуть пустой результат только в локальной рабочей копии с конфигурацией. Не публикуйте файл, если в него уже внесены реальные учётные данные.
+This command should return no results only in a locally configured working copy. Never publish a file after inserting real credentials.
 
-## Подключение к Active Directory
+## Active Directory connection
 
-### Имя сервера и порт
+### Server name and port
 
-Код создаёт объект сервера так:
+The code constructs the server object as follows:
 
 ```python
 server = Server(AD_SERVER, use_ssl=True, port=636)
 ```
 
-Используйте DNS-имя контроллера домена, присутствующее в SAN сертификата, например `dc01.example.local`. IP-адрес часто не совпадает с именем сертификата и затрудняет корректную проверку подлинности сервера. Межсетевой экран должен разрешать исходящее соединение с выбранным контроллером по TCP 636.
+Use a DNS name included in the certificate SAN, such as `dc01.example.local`. An IP address often does not match the certificate identity and prevents correct authentication. The firewall must permit outbound TCP 636 to the selected controller.
 
-В текущей реализации объект `Tls` не передаётся. Согласно документации ldap3, при таком варианте сертификат сервера по умолчанию не проверяется. Для рабочей эксплуатации добавьте обязательную валидацию доверенной цепочки:
+The current implementation does not pass a `Tls` object. According to ldap3 documentation, the server certificate is not validated in this configuration. Add mandatory trust-chain validation before production use:
 
 ```python
 import ssl
@@ -64,37 +64,37 @@ tls = Tls(
 server = Server(AD_SERVER, port=636, use_ssl=True, tls=tls)
 ```
 
-Файл центра сертификации должен быть получен по доверенному каналу и доступен только на чтение обычным пользователям. Если в организации применяется доверенный системный контекст SSL, способ его подключения необходимо проверить на целевой версии Python и ldap3.
+Obtain the CA file through a trusted channel and make it read-only for ordinary users. If the organization relies on the system trust store, verify the correct integration on the target Python and ldap3 versions.
 
-### Сервисная учётная запись
+### Service account
 
-Формат `AD_USER` при `authentication=NTLM` обычно задаётся как `NETBIOS_DOMAIN\\username`. Учётной записи следует делегировать только те операции, которые нужны приложению: создание пользователя в выбранной OU, запись перечисленных атрибутов, сброс пароля, изменение `userAccountControl`, разблокировка и добавление участников в конкретные группы.
+With `authentication=NTLM`, `AD_USER` is normally written as `NETBIOS_DOMAIN\\username`. Delegate only the required operations: create users in the target OU, write the listed attributes, reset passwords, change `userAccountControl`, unlock accounts, and add members to the approved groups.
 
-Не используйте Domain Admin. Отдельная сервисная учётная запись упрощает отзыв доступа, аудит и ограничение зоны воздействия.
+Do not use Domain Admin. A dedicated service account simplifies revocation, auditing, and impact containment.
 
-Минимальный переход от пароля в исходнике к внешнему источнику конфигурации выглядит так:
+A minimal step away from a hard-coded password is:
 
 ```python
 AD_PASSWORD = os.environ["AD_USER_TOOL_PASSWORD"]
 ```
 
-Переменная среды всё равно содержит секрет в открытом виде в окружении процесса, поэтому этот вариант лучше жёстко заданной строки, но не заменяет корпоративное хранилище секретов. Способ безопасной передачи значения дочернему процессу должен определяться правилами вашей организации. Пример показывает направление рефакторинга, а не готовую схему хранения.
+An environment variable still exposes the secret in process state. It is better than a source-code string, but it is not a substitute for a corporate secret store. Treat the example as a refactoring direction, not a complete credential design.
 
-## Целевая OU и Distinguished Name
+## Target OU and Distinguished Name
 
-`usersOU` должен содержать полный DN контейнера, в котором создаются сотрудники. Порядок компонентов идёт от вложенной OU к корню домена:
+`usersOU` must contain the full DN of the employee container, ordered from the innermost OU toward the domain root:
 
 ```python
 usersOU = "OU=Employees,OU=Users,DC=example,DC=local"
 ```
 
-Программа строит DN пользователя как `CN=<Фамилия Имя>,<usersOU>`. Специальные символы LDAP DN в имени сейчас не экранируются. Апострофы, запятые, обратные слеши, начальные и конечные пробелы необходимо тестировать отдельно; безопаснее добавить экранирование средствами ldap3 до промышленного запуска.
+The application builds the user DN as `CN=<Surname First name>,<usersOU>`. It does not currently escape reserved DN characters. Test apostrophes, commas, backslashes, and leading or trailing spaces separately; add ldap3-supported escaping before production use.
 
-## UPN, логин и почтовый адрес
+## UPN, login, and email
 
-`sAMAccountName` формируется автоматически. Код берёт первую букву имени, присоединяет фамилию, переводит результат через `GOST_779_ALT` и оставляет только буквенно-цифровые символы. Алгоритм ориентирован на однословные имя и фамилию и не проверяет существование такого логина.
+The application generates `sAMAccountName` automatically. It combines the first-name initial with the surname, transliterates the value through `GOST_779_ALT`, and retains only alphanumeric characters. The algorithm assumes single-token names and does not check whether the login already exists.
 
-`userPrincipalName`, LDAP-атрибут `mail` и адрес в Word-документе задаются в трёх отдельных местах. Если домен входа отличается от почтового домена, используйте разные суффиксы осознанно:
+`userPrincipalName`, the LDAP `mail` attribute, and the email address in the Word document are set in three places. If the sign-in domain and email domain differ, configure each suffix deliberately:
 
 ```python
 'userPrincipalName': tname2 + '@example.local',
@@ -108,46 +108,46 @@ context = {
 }
 ```
 
-UPN-суффикс должен быть разрешён в лесу Active Directory. Почтовый домен должен соответствовать правилам Kerio Connect и адресной книге организации.
+The UPN suffix must be allowed in the Active Directory forest. The email domain must match Kerio Connect and corporate address-book rules.
 
-## Соответствие полей интерфейса атрибутам AD
+## Form fields and AD attributes
 
-| Поле формы | Обработка | Атрибут Active Directory |
+| Form field | Processing | Active Directory attribute |
 | --- | --- | --- |
-| `Surname*` | `strip().title()` | `sn`, участвует в `displayName` и CN |
-| `Name*` | `strip().title()` | `givenName`, участвует в `displayName` и логине |
+| `Surname*` | `strip().title()` | `sn`; also used in `displayName` and the CN |
+| `Name*` | `strip().title()` | `givenName`; also used in `displayName` and login generation |
 | `Employee's position*` | `strip().title()` | `title` |
 | `Department / Division*` | `strip().title()` | `department` |
-| `Phone number (short)` | Пробел вместо пустой строки | `telephoneNumber` |
-| `Phone number` | Пробел вместо пустой строки | `mobile` |
-| `Room*` | Объединяется с рабочим местом | `physicalDeliveryOfficeName` |
-| `№ workplace` | Объединяется как `<кабинет> - <место>` | `physicalDeliveryOfficeName` |
-| `Description` | Пробел вместо пустой строки | `description` |
+| `Phone number (short)` | A single space when empty | `telephoneNumber` |
+| `Phone number` | A single space when empty | `mobile` |
+| `Room*` | Combined with the workstation number | `physicalDeliveryOfficeName` |
+| `No. workplace` | Combined as `<room> - <workstation>` | `physicalDeliveryOfficeName` |
+| `Description` | A single space when empty | `description` |
 
-Применение `.title()` может превратить аббревиатуру `ИТ` в `Ит`. Если точный регистр должности или подразделения важен, уберите это преобразование для соответствующих полей.
+`.title()` may change all-uppercase abbreviations. Remove that transformation from fields where exact case matters.
 
-Для необязательных атрибутов код подставляет одиночный пробел. Более предсказуемая стратегия — не включать атрибут в словарь, когда значение отсутствует. До такой доработки проверьте, принимает ли ваша схема AD пробельные значения.
+For optional attributes, the current code inserts a single space. Omitting absent attributes from the dictionary would be more predictable. Until that change is made, confirm that the target AD schema accepts whitespace-only values.
 
-## Реквизиты организации и страна
+## Organization and country attributes
 
-Значения `company`, `st`, `streetAddress`, `c`, `countryCode`, `l` и `postalCode` устанавливаются каждому создаваемому сотруднику. Тип и допустимый формат каждого атрибута определяются схемой Active Directory. Особое внимание требуется `countryCode`: демонстрационная строка `Replace` не является допустимым числовым кодом и должна быть заменена либо атрибут следует удалить из словаря до настройки.
+The application writes `company`, `st`, `streetAddress`, `c`, `countryCode`, `l`, and `postalCode` for every employee. The AD schema determines each attribute's type and allowed format. The demonstration value `Replace` is not a valid numeric `countryCode`; replace it or remove the attribute until configuration is complete.
 
-После тестового создания откройте Attribute Editor и сопоставьте фактические значения с корпоративным эталоном пользователя.
+After creating a test user, compare the actual values in Attribute Editor with an approved corporate reference account.
 
 ## Kerio Connect
 
-Эти строки нужны только в среде, где схема Active Directory расширена атрибутами Kerio:
+These attributes are required only in a domain whose schema has been extended for Kerio:
 
 ```python
 'kerio-Mail-AccountEnabled': '1',
 'kerio-Mail-Active': 'example.com',
 ```
 
-Если атрибуты отсутствуют, операция добавления объекта может завершиться ошибкой схемы. В среде без Kerio удалите обе пары из словаря. Если Kerio применяется, сравните имена и значения атрибутов с рабочей учётной записью, созданной поддерживаемым способом, и сначала протестируйте в отдельной OU.
+If the schema does not contain them, user creation may fail. Remove both values in non-Kerio environments. In Kerio environments, compare names and values with an account created through a supported process and test in an isolated OU first.
 
-## Группы безопасности
+## Security groups
 
-Каждый элемент `groups` должен быть полным DN существующей группы:
+Each item in `groups` must be the full DN of an existing group:
 
 ```python
 groups = [
@@ -156,60 +156,60 @@ groups = [
 ]
 ```
 
-Сервисной учётной записи нужны права записи атрибута `member` каждой группы. Программа не проверяет тип группы, область, вложенность, наличие пользователя и результат каждой операции. Ошибка одной группы не приводит к автоматическому удалению членства, уже добавленного в предыдущую группу.
+The service account needs permission to write the `member` attribute of every group. The application does not validate group type, scope, nesting, existing membership, or the result of each operation. A failure on one group does not automatically reverse membership added to earlier groups.
 
-## Параметры учётной записи
+## Account flags
 
-После создания выполняются разблокировка, установка пароля и запись `userAccountControl = 66048`. Это сумма `512` (`NORMAL_ACCOUNT`) и `65536` (`DONT_EXPIRE_PASSWORD`). Следовательно, пользователь включается как обычная доменная учётная запись, а срок действия пароля отключается.
+After creating the object, the application unlocks it, sets the password, and writes `userAccountControl = 66048`. This is `512` (`NORMAL_ACCOUNT`) plus `65536` (`DONT_EXPIRE_PASSWORD`). The result is an enabled ordinary domain account whose password does not expire.
 
-Если корпоративная политика требует сменить начальный пароль при первом входе и запрещает бессрочные пользовательские пароли, текущее значение использовать нельзя. Изменение политики должно быть реализовано и протестировано отдельно; одной правки числа без проверки порядка операций недостаточно.
+Do not use this value if corporate policy requires an initial password change or prohibits non-expiring user passwords. Implement and test the policy change explicitly; changing the number without validating operation order is insufficient.
 
-## Домашний каталог
+## Home directory
 
-В Python-коде задаются шаблон UNC-пути и буква диска:
+The Python source defines the UNC path template and drive letter:
 
 ```powershell
 $fullPath = "\\files01.example.local\Users\<login>"
 $driveLetter = "Z:"
 ```
 
-Сгенерированный сценарий вызывает `Get-ADUser`, записывает `HomeDrive` и `HomeDirectory`, создаёт каталог и добавляет для SID пользователя разрешение `Modify` с наследованием для файлов и подпапок. Наследование родительской папки не отключается, существующие ACE не удаляются.
+The generated script calls `Get-ADUser`, writes `HomeDrive` and `HomeDirectory`, creates the directory, and adds inherited `Modify` permission for the user's SID. It does not disable parent inheritance or remove existing ACEs.
 
-До первого запуска проверьте права администратора на корневой ресурс, доступность UNC-пути, политику наследования, требования Access-Based Enumeration, резервное копирование и квоты. Если каталог уже существует, `New-Item -Force` использует его, а новый ACE добавляется к текущему ACL.
+Before the first run, verify administrator access to the root share, UNC availability, inheritance policy, Access-Based Enumeration requirements, backups, and quotas. If the directory already exists, `New-Item -Force` reuses it and the script adds another ACE to the current ACL.
 
-## Шаблон Word
+## Word template
 
-Код открывает `welcome2.docx` относительно текущего рабочего каталога и передаёт четыре переменные:
+The code opens `welcome2.docx` relative to the current working directory and supplies four values:
 
-| Переменная шаблона | Значение |
+| Template variable | Value |
 | --- | --- |
-| `{{ name }}` | `<Фамилия> <Имя>` |
-| `{{ login }}` | Сформированный `sAMAccountName` |
-| `{{ email }}` | Логин и настроенный почтовый суффикс |
-| `{{ password }}` | Сгенерированный начальный пароль |
+| `{{ name }}` | `<Surname> <First name>` |
+| `{{ login }}` | Generated `sAMAccountName` |
+| `{{ email }}` | Login plus configured email suffix |
+| `{{ password }}` | Generated initial password |
 
-Переменные должны находиться в тексте документа в синтаксисе Jinja2, поддерживаемом DocxTemplate. Не разделяйте одну переменную разным форматированием внутри Word, иначе шаблонизатор может не распознать её ожидаемым образом.
+Variables must remain valid Jinja2 expressions supported by DocxTemplate. Do not split one variable into multiple Word runs with different formatting, because the template engine may no longer recognize it correctly.
 
-Выходной файл сохраняется как `<Фамилия Имя>.docx` в текущем рабочем каталоге. Существующий файл с тем же именем может быть перезаписан без отдельного подтверждения. Документ содержит пароль в открытом виде и должен обрабатываться как конфиденциальный.
+The output is saved as `<Surname First name>.docx` in the current working directory. An existing file with the same name may be overwritten without confirmation. The document contains a plaintext password and must be handled as confidential.
 
-## Предварительная проверка конфигурации
+## Configuration preflight
 
-| Контроль | Критерий готовности |
+| Control | Ready when |
 | --- | --- |
-| Тестовая зона | Создана отдельная OU без производственных пользователей |
-| Разрешение имени | FQDN контроллера разрешается через корпоративный DNS |
-| LDAPS | TCP 636 доступен, сертификат действителен и проверяется клиентом |
-| Делегирование | Сервисная учётная запись не имеет избыточных прав |
-| OU | DN проверен через ADUC/ADSI Edit или PowerShell |
-| Атрибуты | Все значения проходят ограничения схемы |
-| Kerio | Атрибуты существуют либо удалены из конфигурации |
-| Группы | DN групп существуют, запись `member` разрешена |
-| Логины | Определено правило обработки совпадений и составных ФИО |
-| Пароль | Формат и срок действия соответствуют доменной политике |
-| Файловый сервер | UNC-путь и модель ACL проверены на тестовой папке |
-| Шаблон | Все четыре переменные заменяются в копии документа |
-| Секреты | Реальные пароли отсутствуют в Git и исходном коде |
+| Test scope | A separate OU exists with no production users |
+| Name resolution | The controller FQDN resolves through corporate DNS |
+| LDAPS | TCP 636 is reachable and the client validates a trusted certificate |
+| Delegation | The service account has no excessive privileges |
+| OU | The DN is verified through ADUC, ADSI Edit, or PowerShell |
+| Attributes | All values meet schema constraints |
+| Kerio | Attributes exist or are removed from configuration |
+| Groups | DNs exist and `member` writes are permitted |
+| Logins | Collision and compound-name rules are defined |
+| Password | Format and lifetime match domain policy |
+| File server | The UNC path and ACL model pass testing on a test directory |
+| Template | All four variables are replaced in a rendered copy |
+| Secrets | No production password exists in Git or source code |
 
-## Связанные разделы
+## Related documentation
 
-Порядок ежедневной работы описан в [USAGE.md](USAGE.md), внутренняя последовательность операций — в [ARCHITECTURE.md](ARCHITECTURE.md), а типовые причины отказов — в [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Требования к безопасному внедрению находятся в [SECURITY.md](../SECURITY.md).
+See [Usage](USAGE.md) for daily operation, [Architecture](ARCHITECTURE.md) for internal sequencing, [Troubleshooting](TROUBLESHOOTING.md) for common failures, and [Security](../SECURITY.md) for production requirements.

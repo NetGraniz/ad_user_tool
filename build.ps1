@@ -7,6 +7,9 @@ if (Test-Path "dist") { Remove-Item dist -Recurse -Force }
 
 # Find iuliia package path
 $iuliia = python -c "import pathlib, iuliia; print(pathlib.Path(iuliia.__file__).parent / 'schemas')"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to locate the iuliia schema directory."
+}
 
 # Build executable
 pyinstaller `
@@ -16,6 +19,14 @@ pyinstaller `
     --name "ad_user_tool" `
     --add-data "$iuliia;iuliia/schemas" `
     ad_user_tool.py
+
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed with exit code $LASTEXITCODE."
+}
+
+if (-not (Test-Path "dist\ad_user_tool.exe")) {
+    throw "PyInstaller completed without creating dist\ad_user_tool.exe."
+}
 
 Write-Host ""
 Write-Host "Build completed successfully." -ForegroundColor Green

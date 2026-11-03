@@ -17,11 +17,11 @@ def generate_password():
 
 # -------------------- Russians Ctrl+C/X/V --------------------
 def bind_russian_clipboard(widget):
-    # the key codes for Ctrl+К/Ч/М in the Russian layout
+    # Key codes that correspond to Ctrl+C/X/V on the Russian keyboard layout.
     rus_ctrl_map = {
-        75: 'copy',    # К
-        88: 'cut',     # Ч
-        86: 'paste'    # М
+        75: 'copy',
+        88: 'cut',
+        86: 'paste'
     }
 
     def handler(event):
@@ -187,7 +187,7 @@ entries = [entry_sname, entry_name, entry_title, entry_department,
 for i, (text, row) in enumerate(labels):
     tk.Label(root, text=text).grid(row=row, column=0, sticky='e', padx=5, pady=2)
     entries[i].grid(row=row, column=1, padx=5, pady=2)
-    bind_russian_clipboard(entries[i])  # только для русской
+    bind_russian_clipboard(entries[i])  # Add clipboard shortcuts for the Russian layout.
 
 tk.Button(root, text="To create", command=create_user).grid(row=9, column=0, columnspan=2, pady=10)
 

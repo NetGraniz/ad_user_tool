@@ -1,102 +1,102 @@
-# Эксплуатация AD User Tool
+# AD User Tool Operations Guide
 
-## Назначение регламента
+## Purpose
 
-Этот документ описывает ежедневный сценарий создания сотрудника в текущей версии приложения. Он предполагает, что параметры домена уже настроены, LDAPS проверен, права сервисной учётной записи делегированы, а операции успешно пройдены в тестовой OU.
+This guide describes the current employee-provisioning workflow. It assumes that domain settings are configured, LDAPS is verified, service-account permissions are delegated, and all operations have passed testing in an isolated OU.
 
-Приложение изменяет Active Directory сразу после нажатия кнопки. Предварительный просмотр и подтверждение итогового логина отсутствуют, поэтому исходные данные следует проверять до запуска операции.
+The application changes Active Directory immediately after the button is clicked. It provides no final login preview or confirmation, so verify all source data before starting.
 
-## Подготовка рабочего каталога
+## Prepare the working directory
 
-Запускайте `ad_user_tool.py` из корня репозитория либо держите `welcome2.docx` в каталоге, который является текущим на момент старта EXE. Программа использует относительный путь к шаблону и сохраняет результаты в `os.getcwd()`.
+Run `ad_user_tool.py` from the repository root, or keep `welcome2.docx` in the directory that is current when the EXE starts. The application uses a relative template path and writes results to `os.getcwd()`.
 
-Рекомендуемая структура операторского каталога:
+Recommended operator directory:
 
 ```text
 ADUserTool\
-├── ad_user_tool.exe
-├── welcome2.docx
-└── Output\        # текущая версия сама эту папку не использует
+|-- ad_user_tool.exe
+|-- welcome2.docx
+`-- Output\        # The current version does not use this directory automatically.
 ```
 
-Если приложение запускается ярлыком, проверьте поле «Рабочая папка» (`Start in`). Именно оно определяет, где будет искаться шаблон и куда попадут `.ps1` и `.docx`.
+When using a shortcut, verify its `Start in` field. That value determines where the template is found and where `.ps1` and `.docx` files are written.
 
-До запуска убедитесь, что в текущем каталоге нет документа с именем оформляемого сотрудника. `doc.save()` может заменить существующий файл без отдельного подтверждения.
+Before starting, confirm that no document already uses the new employee's output filename. `doc.save()` may overwrite an existing file without another prompt.
 
-## Поля формы
+## Form fields
 
-| Подпись | Обязательность | Пример | Что произойдёт |
+| Label | Required | Example | Result |
 | --- | ---: | --- | --- |
-| `Surname*` | Да | `Иванов` | Станет фамилией, частью CN, displayName, имени файла и логина |
-| `Name*` | Да | `Иван` | Станет именем, частью CN, displayName и первой буквой логина |
-| `Employee's position*` | Да | `Системный администратор` | Запишется в `title` |
-| `Department / Division*` | Да | `Отдел информационных технологий` | Запишется в `department` |
-| `Phone number (short)` | Нет | `1234` | Запишется в `telephoneNumber` |
-| `Phone number` | Нет | `+7 900 000-00-00` | Запишется в `mobile` |
-| `Room*` | Да | `305` | Войдёт в `physicalDeliveryOfficeName` |
-| `№ workplace` | Нет | `2` | Будет присоединён к кабинету через ` - ` |
-| `Description` | Нет | `Головной офис` | Запишется в `description` |
+| `Surname*` | Yes | `Smith` | Used in surname, CN, display name, filename, and login |
+| `Name*` | Yes | `Alex` | Used in first name, CN, display name, and login initial |
+| `Employee's position*` | Yes | `Systems Administrator` | Written to `title` |
+| `Department / Division*` | Yes | `Information Technology` | Written to `department` |
+| `Phone number (short)` | No | `1234` | Written to `telephoneNumber` |
+| `Phone number` | No | `+44 20 0000 0000` | Written to `mobile` |
+| `Room*` | Yes | `305` | Included in `physicalDeliveryOfficeName` |
+| `No. workplace` | No | `2` | Appended to the room with ` - ` |
+| `Description` | No | `Head office` | Written to `description` |
 
-Поля ФИО, должности и подразделения нормализуются методом `.title()`. Для обычного текста это приводит слова к начальному верхнему регистру, но аббревиатуры могут измениться: `ИТ` станет `Ит`. Текущая версия не показывает преобразованное значение до записи в каталог.
+First name, surname, title, and department are normalized with `.title()`. This is usually suitable for ordinary text but can change the case of abbreviations. The current version does not preview the transformed value.
 
-## Формирование логина
+## Login generation
 
-Алгоритм использует первую букву имени и фамилию:
+The algorithm combines the first-name initial with the surname:
 
 ```text
-<первая буква имени><фамилия>
-        ↓
-транслитерация GOST_779_ALT
-        ↓
-удаление всех символов, для которых isalnum() возвращает False
+<first-name initial><surname>
+        |
+        v
+GOST_779_ALT transliteration
+        |
+        v
+remove every character for which isalnum() is False
 ```
 
-Для имени `Иван` и фамилии `Иванов` основой будет строка `ииванов`, после чего библиотека iuliia выполнит транслитерацию. Фактический результат следует проверить на тестовой машине, потому что он зависит от правил выбранной схемы.
+Verify the exact result on the test machine because the selected iuliia schema determines transliteration. The current version does not check `sAMAccountName` availability, legacy length limits, namesakes, or compound names. Do not run provisioning when the expected login already exists.
 
-Текущая версия не проверяет занятость `sAMAccountName`, длину имени, ограничения старых клиентов, однофамильцев и составные ФИО. Если в организации уже существует пользователь с таким логином, операцию нельзя запускать без ручного изменения алгоритма или исходных данных.
+## Initial password generation
 
-## Формирование начального пароля
-
-Пароль всегда состоит из девяти символов в одном порядке:
+The password always contains nine characters in this order:
 
 ```text
 [A-Z][a-z][0-9][0-9][0-9][0-9][0-9][0-9][#|!|@]
 ```
 
-Пример формы, но не фактический пароль: `Ab123456#`.
+Example format only: `Ab123456#`.
 
-Генерация использует модуль `random`. Официальная документация Python указывает, что этот генератор не предназначен для секретов. До замены на `secrets` и проверки требований доменной политики считайте текущий пароль демонстрационным механизмом, а не утверждённым средством выдачи реквизитов.
+The generator uses `random`, which Python documentation explicitly excludes from secret generation. Until it is replaced with `secrets` and validated against domain policy, treat this mechanism as a prototype rather than an approved credential process.
 
-## Создание сотрудника
+## Create the employee
 
-### Проверка исходных данных
+### Validate source data
 
-Сопоставьте ФИО с кадровым документом, проверьте должность, подразделение, кабинет и телефоны. Отдельно убедитесь, что предполагаемый логин не занят в Active Directory и почтовой системе. Проверьте отсутствие локального `.docx` с тем же ФИО.
+Compare the employee name with the HR request. Verify title, department, room, and phone numbers. Confirm separately that the expected login is unused in Active Directory and the mail system. Check that no local DOCX has the same employee name.
 
-### Запуск операции
+### Start the operation
 
-Нажмите `To create` один раз. Повторное нажатие во время задержки сети может инициировать ещё одну попытку. Интерфейс выполняет LDAP-запросы в основном потоке, поэтому окно способно временно выглядеть зависшим до завершения соединения.
+Click `To create` once. Clicking again during a network delay can start another attempt. LDAP calls run in the GUI thread, so the window may temporarily appear frozen.
 
-### Что выполняется в Active Directory
+### Active Directory changes
 
-Программа подключается по LDAPS с NTLM, создаёт объект `user`, задаёт атрибуты, вызывает разблокировку, устанавливает пароль, записывает `userAccountControl = 66048`, а затем последовательно добавляет DN сотрудника в каждую настроенную группу.
+The application connects through LDAPS with NTLM, creates a `user` object, sets attributes, unlocks the account, sets the password, writes `userAccountControl = 66048`, and then adds the user DN to each configured group in order.
 
-Число `66048` означает обычную включённую учётную запись с флагом «пароль не истекает». Смена пароля при первом входе текущим кодом не задаётся.
+Value `66048` represents an enabled ordinary account whose password does not expire. The current code does not require a password change at first sign-in.
 
-### Какие локальные файлы создаются
+### Local output files
 
-После LDAP-блока создаётся `<логин>.ps1`. Затем `welcome2.docx` заполняется значениями `name`, `login`, `email` и `password`, а результат сохраняется как `<Фамилия Имя>.docx`.
+After the LDAP block, the application writes `<login>.ps1`. It then renders `welcome2.docx` with `name`, `login`, `email`, and `password`, saving the result as `<Surname First name>.docx`.
 
-Файл PS1 содержит логин, путь к домашнему каталогу и логику назначения ACL. DOCX содержит начальный пароль в открытом виде. Оба файла требуют контролируемого доступа и установленного срока удаления.
+The PS1 contains the login, home-directory path, and ACL logic. The DOCX contains the initial password in plaintext. Both files require controlled access and a defined deletion deadline.
 
-## Проверка результата в Active Directory
+## Verify the Active Directory result
 
-Сообщение `Done` показывает значения, сформированные приложением, но не является достаточным подтверждением всех LDAP-операций. Текущий код не анализирует возвращаемые значения `conn.add()`, `conn.modify()` и `conn.result`.
+The `Done` dialog shows values generated by the application, but does not prove every LDAP operation succeeded. The current code does not inspect the return values of `conn.add()`, `conn.modify()`, or `conn.result`.
 
-Проверку можно выполнить через модуль ActiveDirectory:
+Use the ActiveDirectory module to inspect the object:
 
 ```powershell
-$login = '<созданный_логин>'
+$login = '<created_login>'
 $properties = @(
     'SamAccountName', 'UserPrincipalName', 'Mail', 'Department', 'Title',
     'TelephoneNumber', 'Mobile', 'physicalDeliveryOfficeName',
@@ -107,79 +107,79 @@ $user = Get-ADUser -Identity $login -Properties $properties
 $user | Format-List -Property $properties
 ```
 
-Команда должна выполняться на машине с RSAT Active Directory либо в административном сеансе, где доступен модуль `ActiveDirectory`.
+Run this on a machine with RSAT Active Directory or another administrative session where the module is available.
 
-Сверьте DN объекта, UPN, почтовый адрес, отображаемое имя, должность, подразделение, телефоны, кабинет, описание, организационные реквизиты и членство во всех ожидаемых группах. Если хотя бы одно изменение отсутствует, не создавайте пользователя повторно до выяснения состояния первой операции.
+Verify the object DN, UPN, email, display name, title, department, phones, room, description, organization details, and every expected group. If any change is missing, do not recreate the user until the first operation is understood.
 
-## Выполнение сценария домашней папки
+## Run the home-directory script
 
-Откройте сгенерированный `<логин>.ps1` в редакторе и проверьте `$samAccountName`, `$fullPath` и `$driveLetter`. Убедитесь, что UNC-путь относится к правильному файловому серверу и корневому ресурсу.
+Open `<login>.ps1` in an editor and inspect `$samAccountName`, `$fullPath`, and `$driveLetter`. Confirm that the UNC path points to the correct file server and root share.
 
-Запустите PowerShell в контексте администратора с правами на пользователя и файловый ресурс:
+Run PowerShell with rights to modify the user and file share:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-& '.\<логин>.ps1'
+& '.\<login>.ps1'
 ```
 
-Сценарий получает объект через `Get-ADUser`, задаёт `HomeDrive` и `HomeDirectory`, создаёт каталог, читает его ACL, добавляет разрешение `Modify` для SID пользователя и записывает ACL обратно.
+The script retrieves the user, writes `HomeDrive` and `HomeDirectory`, creates the directory, reads its ACL, adds inherited `Modify` permission for the user's SID, and writes the ACL back.
 
-После выполнения проверьте свойства пользователя:
+Verify the resulting AD properties:
 
 ```powershell
-Get-ADUser -Identity '<логин>' -Properties HomeDrive,HomeDirectory |
+Get-ADUser -Identity '<login>' -Properties HomeDrive,HomeDirectory |
     Select-Object SamAccountName,HomeDrive,HomeDirectory
 ```
 
-Затем проверьте каталог и разрешения:
+Then inspect the directory and ACL:
 
 ```powershell
-Get-Item '\\files01.example.local\Users\<логин>'
-Get-Acl '\\files01.example.local\Users\<логин>' | Format-List
+Get-Item '\\files01.example.local\Users\<login>'
+Get-Acl '\\files01.example.local\Users\<login>' | Format-List
 ```
 
-Текущий сценарий не отключает наследование и не удаляет существующие разрешения. Ожидаемый итог необходимо сравнивать с эталонной домашней папкой вашей организации.
+The script neither disables inheritance nor removes existing permissions. Compare the result with an approved reference home directory.
 
-## Проверка документа сотрудника
+## Verify the employee document
 
-Откройте `<Фамилия Имя>.docx` и убедитесь, что в документе не осталось строк `{{ name }}`, `{{ login }}`, `{{ email }}` или `{{ password }}`. Проверьте переносы строк, таблицы, шрифты и длину значений.
+Open `<Surname First name>.docx` and confirm that none of `{{ name }}`, `{{ login }}`, `{{ email }}`, or `{{ password }}` remains. Inspect line wrapping, tables, fonts, and long values.
 
-Перед передачей сотруднику установите разрешённый канал выдачи начального пароля. Не отправляйте логин и пароль вместе по незащищённой электронной почте. После подтверждения получения удалите незашифрованный документ согласно внутренней политике хранения.
+Use the approved credential-delivery channel. Do not send login and password together through unprotected email. Remove the unencrypted document according to internal retention policy after receipt is confirmed.
 
-## Возможные частичные результаты
+## Partial results
 
-| Состояние | Что могло сохраниться | Действие оператора |
+| State | What may already exist | Operator action |
 | --- | --- | --- |
-| Окно `AD Error` | Объект мог быть создан до более позднего исключения | Найти пользователя и проверить каждую операцию вручную |
-| Окно `PS Error` | Учётная запись и группы уже могли быть настроены | Не повторять создание; исправить только генерацию или создать каталог вручную |
-| Окно `Word Error` | AD и PS1 уже могли быть готовы | Исправить шаблон/путь и сформировать документ отдельно |
-| Окно `Done`, но объекта нет | LDAP-метод мог вернуть ошибку без исключения | Проверить журнал/`conn.result`; не доверять только диалогу |
-| Пользователь есть, группы неполные | Одна или несколько модификаций групп не применились | Добавить недостающее членство после проверки прав и DN |
-| DOCX создан, PS1 отсутствует | Ошибка записи PS1 была показана предупреждением | Создать домашнюю папку отдельно, не пересоздавая пользователя |
+| `AD Error` | The object may have been created before a later exception | Find the user and verify each operation manually |
+| `PS Error` | The account and groups may already be configured | Do not recreate the user; repair only script generation or create the directory manually |
+| `Word Error` | AD and PS1 may already be complete | Repair the template or path and render the document separately |
+| `Done`, but no object exists | An LDAP method may have returned failure without raising | Inspect `conn.result`; do not trust the dialog alone |
+| User exists with incomplete groups | One or more group modifications failed | Add missing membership only after checking permissions and DNs |
+| DOCX exists but PS1 is missing | The PS1 write warning was shown | Configure the home directory separately without recreating the user |
 
-Приложение не реализует транзакцию и автоматический откат. Повторный запуск с теми же ФИО не является способом продолжить прерванную операцию.
+The application provides no transaction or automatic rollback. Repeating the same names is not a supported recovery method.
 
-## Завершение операции
+## Complete the operation
 
-После проверки AD, групп, домашней папки и документа зафиксируйте создание пользователя в принятой системе заявок. Удалите или переместите PS1 и DOCX в защищённое место. Очистите документ с паролем после выдачи реквизитов. Закройте приложение, чтобы избежать случайного повторного создания.
+After verifying AD, group membership, the home directory, and the document, record completion in the approved request system. Move or delete PS1 and DOCX artifacts as policy requires. Remove password-bearing documents after delivery and close the application to prevent accidental duplicate creation.
 
-## Контрольный журнал оператора
+## Operator checklist
 
-| Контроль | Отметка |
+| Check | Status |
 | --- | --- |
-| ФИО и должность сверены с заявкой | `□` |
-| Рассчитанный логин свободен | `□` |
-| Объект находится в правильной OU | `□` |
-| UPN и почта корректны | `□` |
-| Все обязательные атрибуты заполнены | `□` |
-| Флаг срока действия пароля соответствует политике | `□` |
-| Членство в группах подтверждено | `□` |
-| Домашний каталог и `Z:` настроены | `□` |
-| ACL совпадает с эталоном | `□` |
-| DOCX не содержит незаменённых переменных | `□` |
-| Реквизиты переданы разрешённым каналом | `□` |
-| Временные файлы с паролем удалены | `□` |
+| Name and title match the request | `[ ]` |
+| Generated login is available | `[ ]` |
+| Object is in the correct OU | `[ ]` |
+| UPN and email are correct | `[ ]` |
+| Required attributes are populated | `[ ]` |
+| Password-expiry flag matches policy | `[ ]` |
+| Group membership is confirmed | `[ ]` |
+| Home directory and `Z:` are configured | `[ ]` |
+| ACL matches the approved reference | `[ ]` |
+| DOCX contains no unresolved variables | `[ ]` |
+| Credentials used an approved delivery channel | `[ ]` |
+| Temporary password files were removed | `[ ]` |
 
-## Связанные разделы
+## Related documentation
 
-Параметры домена и шаблона описаны в [CONFIGURATION.md](CONFIGURATION.md). При ошибке используйте [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Риски обработки паролей и прав перечислены в [SECURITY.md](../SECURITY.md).
+See [Configuration](CONFIGURATION.md) for domain and template settings, [Troubleshooting](TROUBLESHOOTING.md) for failures, and [Security](../SECURITY.md) for password and permission risks.

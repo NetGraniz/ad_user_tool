@@ -1,130 +1,126 @@
-# Диагностика AD User Tool
+# AD User Tool Troubleshooting
 
-## Подход к диагностике
+## Diagnostic approach
 
-Сначала определите, на каком этапе произошёл сбой: запуск приложения, проверка полей, подключение и LDAP-операции, запись PS1, рендеринг Word или запуск сгенерированного сценария. Не нажимайте `To create` повторно, пока не проверено состояние объекта в Active Directory.
+Identify the failing stage first: application startup, form validation, LDAP connection or modification, PS1 writing, Word rendering, or execution of the generated script. Do not click `To create` again until you have checked the object state in Active Directory.
 
-Текущий EXE собирается с `--noconsole`, поэтому traceback скрыт. Для диагностики предпочтительно запустить `python ad_user_tool.py` из PowerShell либо временно собрать консольную версию по инструкции из [DEVELOPMENT.md](DEVELOPMENT.md).
+The current EXE uses `--noconsole`, so tracebacks are hidden. For diagnosis, run `python ad_user_tool.py` from PowerShell or build the temporary console version described in [Development](DEVELOPMENT.md).
 
-## Приложение не запускается
+## Application does not start
 
-| Симптом | Вероятная причина | Проверка и действие |
+| Symptom | Likely cause | Check and action |
 | --- | --- | --- |
-| `python` не найден | Python не установлен или отсутствует в PATH | Выполнить `py --version`; использовать `py -3.12` |
-| `ModuleNotFoundError` | Не активировано `.venv` или зависимости не установлены | Активировать окружение и выполнить `python -m pip install -r requirements.txt` |
-| Ошибка Tkinter | Неполная установка Python | Выполнить `python -m tkinter`; при необходимости установить стандартный Windows Python с Tcl/Tk |
-| EXE мгновенно закрывается | Исключение скрыто `--noconsole` | Запустить исходник или диагностическую консольную сборку |
-| Антивирус блокирует EXE | Эвристика для неподписанного onefile-приложения | Проверить журнал защитного решения, хэш и происхождение; не отключать защиту глобально |
+| `python` is not found | Python is missing or absent from PATH | Run `py --version` and use `py -3.12` |
+| `ModuleNotFoundError` | `.venv` is inactive or dependencies are missing | Activate the environment and run `python -m pip install -r requirements.txt` |
+| Tkinter error | Incomplete Python installation | Run `python -m tkinter`; install the standard Windows Python distribution with Tcl/Tk if necessary |
+| EXE closes immediately | `--noconsole` hides an exception | Run from source or use the diagnostic console build |
+| Antivirus blocks the EXE | Heuristic detection of an unsigned one-file application | Review the security-product log, hash, and provenance; do not disable protection globally |
 
-Проверка окружения:
+Check the environment:
 
 ```powershell
 python -c "import sys, tkinter, ldap3, iuliia, docxtpl; print(sys.executable)"
 python -m pip check
 ```
 
-## Кнопка ничего не делает или окно зависает
+## Button appears unresponsive or the window freezes
 
-LDAP-операции выполняются в главном потоке Tkinter. При задержке DNS, TCP 636 или NTLM-bind окно не перерисовывается до возврата из вызова. Не нажимайте кнопку повторно.
+LDAP operations run in Tkinter's main thread. During DNS, TCP 636, or NTLM delays, the window cannot repaint until the call returns. Do not click the button again.
 
-Проверьте DNS и порт отдельно:
+Test DNS and the port separately:
 
 ```powershell
 Resolve-DnsName dc01.example.local
 Test-NetConnection dc01.example.local -Port 636
 ```
 
-Если порт недоступен, проверьте маршрутизацию, локальный и сетевой межсетевой экран, наличие LDAPS на контроллере и правильность имени сервера.
+If the port is unreachable, inspect routing, host and network firewalls, LDAPS availability on the controller, and the configured server name.
 
-## Ошибки подключения LDAPS
+## LDAPS connection errors
 
-### `LDAPSocketOpenError` или невозможность открыть сокет
+### `LDAPSocketOpenError` or socket failure
 
-Причиной обычно является неверное имя сервера, недоступный TCP 636, отсутствие LDAPS, DNS-ошибка или обрыв TLS. `Test-NetConnection` подтверждает только достижимость порта, но не успешный LDAP-bind.
+Typical causes are an incorrect server name, unreachable TCP 636, missing LDAPS, DNS failure, or TLS interruption. `Test-NetConnection` proves only that a port is reachable, not that LDAP bind succeeds.
 
-Для проверки сертификата можно использовать корпоративный инструмент TLS или OpenSSL, если он установлен и разрешён политикой:
+Use an approved TLS diagnostic tool or OpenSSL when available:
 
 ```powershell
 openssl s_client -connect dc01.example.local:636 -servername dc01.example.local -showcerts
 ```
 
-Сопоставьте срок действия, цепочку доверия и SAN с FQDN, который использует приложение.
+Compare certificate validity, trust chain, and SAN entries with the FQDN used by the application.
 
-### Сертификат принимается, хотя он недоверенный
+### An untrusted certificate is accepted
 
-Это соответствует текущей реализации: `Server(..., use_ssl=True)` создаётся без явного `Tls(validate=ssl.CERT_REQUIRED)`. ldap3 документирует отсутствие проверки сертификата при такой конфигурации. Добавьте `Tls` с обязательной валидацией до рабочего внедрения; пример приведён в [CONFIGURATION.md](CONFIGURATION.md).
+This matches the current implementation. `Server(..., use_ssl=True)` is created without `Tls(validate=ssl.CERT_REQUIRED)`, so ldap3 does not validate the certificate. Add mandatory validation before production use; [Configuration](CONFIGURATION.md) contains an example.
 
 ### `invalidCredentials`
 
-Проверьте формат `AD_USER`, пароль, блокировку сервисной учётной записи, срок действия, разрешённые методы аутентификации и часы системы. Для NTLM обычно используется `DOMAIN\\username`, где `DOMAIN` — NetBIOS-имя.
+Check `AD_USER` format, password, service-account lockout and expiry, allowed authentication methods, and clock synchronization. NTLM normally expects `DOMAIN\\username`, where `DOMAIN` is the NetBIOS name.
 
-Не выводите `AD_PASSWORD` в консоль и не прикладывайте его к заявке или issue.
+Never print `AD_PASSWORD` or attach it to a ticket or issue.
 
-## Пользователь не создаётся
+## User is not created
 
-| LDAP-описание | Типичная причина | Что проверить |
+| LDAP description | Typical cause | What to inspect |
 | --- | --- | --- |
-| `noSuchObject` | Ошибка в `usersOU` или DN группы | Существование каждого компонента DN и правильный порядок OU/DC |
-| `entryAlreadyExists` | Такой CN уже есть в OU | Найти существующий объект; не выполнять повторную операцию автоматически |
-| `insufficientAccessRights` | Не делегированы права | Создание объекта, запись атрибутов, сброс пароля, UAC и членство в группах |
-| `objectClassViolation` | Недопустимый атрибут или схема | Наличие Kerio-атрибутов и допустимость каждого поля для класса `user` |
-| `constraintViolation` | Нарушение типа, длины или политики | Формат `countryCode`, UPN, пароль, длина значений и ограничения схемы |
-| `invalidDNSyntax` | Некорректный DN | Запятые, экранирование специальных символов, пробелы и порядок компонентов |
-| `unwillingToPerform` | Контроллер отверг операцию | LDAPS для смены пароля, политика паролей, состояние объекта и подробное сообщение сервера |
+| `noSuchObject` | Invalid `usersOU` or group DN | Existence and order of every OU and DC component |
+| `entryAlreadyExists` | The CN already exists in the OU | Locate the existing object; do not repeat automatically |
+| `insufficientAccessRights` | Missing delegation | Object creation, attribute writes, password reset, UAC, and group membership |
+| `objectClassViolation` | Unsupported attribute or schema | Kerio attributes and every field allowed for class `user` |
+| `constraintViolation` | Type, length, or policy violation | `countryCode`, UPN, password, value lengths, and schema constraints |
+| `invalidDNSyntax` | Invalid DN | Commas, reserved-character escaping, spaces, and component order |
+| `unwillingToPerform` | Controller rejected the operation | LDAPS for password changes, password policy, object state, and detailed server message |
 
-Ключевое ограничение: `conn.add()` и `conn.modify()` могут вернуть `False`, не выбросив исключение. Текущий код не проверяет это значение и `conn.result`, поэтому оператор иногда увидит `Done` после фактического отказа каталога.
+`conn.add()` and `conn.modify()` may return `False` without raising. The current code checks neither the return value nor `conn.result`, so the UI can display `Done` after a directory refusal.
 
-Для разработки временно выводите результат сразу после операции, исключая пароль:
+For temporary development diagnostics, inspect the result without printing any password:
 
 ```python
-ok = conn.add(user_dn, 'user', attributes)
+ok = conn.add(user_dn, "user", attributes)
 print(ok, conn.result)
 ```
 
-В рабочей версии замените `print` на структурированную обработку и безопасный журнал.
+Replace `print` with structured handling and safe logging before production use.
 
-## Пользователь создан, но пароль не установлен
+## User exists but the password was not set
 
-Смена пароля Active Directory требует защищённого соединения и соответствия доменной политике. Проверьте LDAPS, делегированное право Reset password, минимальную длину, сложность, историю и запрещённые значения.
+Active Directory password changes require a protected connection and compliance with domain policy. Check LDAPS, delegated Reset password rights, minimum length, complexity, history, and banned values.
 
-Текущий генератор выдаёт ровно 9 символов. Если политика требует 12 или 14, операция установки пароля будет отвергнута. После исправления не запускайте всё приложение повторно: установите пароль уже существующему тестовому объекту контролируемым способом либо удалите только тестовый объект после анализа.
+The current generator always produces 9 characters. A policy requiring 12 or 14 rejects the operation. After correcting the issue, do not rerun the entire application. Set the password on the existing test object through a controlled procedure, or remove only the test object after analysis.
 
-## Пользователь создан, но отключён или имеет неверные флаги
-
-Проверьте:
+## User is disabled or has incorrect flags
 
 ```powershell
-Get-ADUser -Identity '<логин>' -Properties Enabled,PasswordNeverExpires,LockedOut |
+Get-ADUser -Identity '<login>' -Properties Enabled,PasswordNeverExpires,LockedOut |
     Select-Object SamAccountName,Enabled,PasswordNeverExpires,LockedOut
 ```
 
-Код должен записать `userAccountControl = 66048`, что объединяет обычную учётную запись и бессрочный пароль. Если модификация не прошла, объект может остаться отключённым после первоначального `add`.
+The code should write `userAccountControl = 66048`, which combines a normal account with a non-expiring password. If the modification failed, the object may remain disabled after the initial add.
 
-## Группы назначены не полностью
-
-Проверьте фактическое членство:
+## Group membership is incomplete
 
 ```powershell
-Get-ADPrincipalGroupMembership '<логин>' |
+Get-ADPrincipalGroupMembership '<login>' |
     Sort-Object Name |
     Select-Object Name,GroupScope,GroupCategory
 ```
 
-Сопоставьте список с каждым DN массива `groups`. Для изменения атрибута `member` нужны права на саму группу, а не только на OU пользователя. Неверный DN одной группы не должен исправляться повторным созданием пользователя.
+Compare the result with every DN in `groups`. The service account needs permission on the group object's `member` attribute, not merely on the user OU. Do not correct one invalid group DN by recreating the user.
 
-Текущая программа не сообщает, какая групповая модификация вернула `False`. Во время доработки проверяйте `conn.result` внутри цикла и включайте DN группы в безопасное сообщение об ошибке.
+The application does not identify which group modification returned `False`. During development, inspect `conn.result` inside the loop and include the safe group DN in the error.
 
-## Ошибки Kerio Connect
+## Kerio Connect errors
 
-Если схема домена не содержит `kerio-Mail-AccountEnabled` или `kerio-Mail-Active`, удалите эти атрибуты из словаря. Если схема расширена, проверьте точное написание, синтаксис и допустимые значения по рабочему эталонному объекту.
+Remove `kerio-Mail-AccountEnabled` and `kerio-Mail-Active` when the domain schema does not contain them. In an extended schema, verify exact spelling, syntax, and allowed values against a supported reference account.
 
-Не считайте наличие атрибутов достаточным подтверждением создания почтового ящика. Синхронизация и активация Kerio находятся за пределами текущего приложения и должны проверяться отдельно в административной консоли почтовой системы.
+The presence of attributes does not prove that Kerio created a mailbox. Synchronization and activation are outside this application and must be checked separately in the mail system's administration console.
 
 ## `PS Error`
 
-Это предупреждение относится к записи файла `<логин>.ps1`, а не к исполнению PowerShell. Возможные причины: текущий каталог недоступен для записи, имя файла недопустимо, файл заблокирован другой программой, защитное ПО запретило создание сценария или закончилась квота диска.
+This warning refers to writing `<login>.ps1`, not to executing PowerShell. Causes include a non-writable working directory, invalid filename, another process locking the file, endpoint protection blocking script creation, or exhausted disk quota.
 
-Проверьте текущий каталог и возможность записи:
+Check the working directory and write access:
 
 ```powershell
 Get-Location
@@ -133,92 +129,90 @@ New-Item -Path $test -ItemType File -ErrorAction Stop
 Remove-Item $test
 ```
 
-Успешное создание пользователя не отменяется из-за `PS Error`. Проверьте AD до любых повторных действий.
+A successful AD change is not undone by `PS Error`. Inspect Active Directory before retrying anything.
 
-## Сгенерированный PS1 завершается ошибкой
+## Generated PS1 fails
 
-| Сообщение | Причина | Действие |
+| Message | Cause | Action |
 | --- | --- | --- |
-| `Get-ADUser is not recognized` | Нет модуля ActiveDirectory | Установить/включить RSAT AD DS и импортировать модуль |
-| Пользователь не найден | Неверный логин или создание в AD не завершилось | Проверить `Get-ADUser -Identity` вручную |
-| `Access is denied` в `Set-ADUser` | Нет права изменять HomeDrive/HomeDirectory | Делегировать минимальные права |
-| `Access is denied` в `New-Item` | Нет прав на файловый ресурс | Проверить share и NTFS-разрешения корня |
-| `The network path was not found` | Ошибка UNC/DNS/SMB | Проверить имя файлового сервера и доступность TCP 445 |
-| Ошибка `Set-Acl` | Неверный ACL, владелец или недостаточные права | Сравнить с эталонным каталогом и проверить контекст запуска |
-| Каталог существует | Повторная операция или прежний объект | Не удалять автоматически; проверить владельца и ACL |
+| `Get-ADUser is not recognized` | ActiveDirectory module is missing | Install or enable RSAT AD DS and import the module |
+| User not found | Wrong login or AD creation did not complete | Run `Get-ADUser -Identity` manually |
+| `Access is denied` from `Set-ADUser` | Missing HomeDrive or HomeDirectory write permission | Delegate the minimum required rights |
+| `Access is denied` from `New-Item` | Missing file-share permission | Check share and NTFS rights on the root |
+| `The network path was not found` | UNC, DNS, or SMB failure | Verify the file-server name and TCP 445 |
+| `Set-Acl` failure | Invalid ACL, ownership, or insufficient rights | Compare with a reference directory and inspect the execution identity |
+| Directory already exists | A retry or an earlier object created it | Do not delete automatically; inspect owner and ACL |
 
-Проверьте сетевой ресурс:
+Check the file share:
 
 ```powershell
 Test-NetConnection files01.example.local -Port 445
 Test-Path '\\files01.example.local\Users'
 ```
 
-Сценарий задаёт `NoPropagateInherit`. Если политика организации ожидает другое наследование, результат может отличаться от эталона даже при отсутствии ошибки.
+The script uses `NoPropagateInherit`. If organizational policy expects different inheritance, the result can diverge from the reference even without an exception.
 
 ## `Word Error`
 
-### `welcome2.docx` не найден
-
-Проверьте рабочий каталог:
+### `welcome2.docx` is missing
 
 ```powershell
 Get-Location
 Test-Path .\welcome2.docx
 ```
 
-При запуске через ярлык настройте поле «Рабочая папка». Текущий `build.ps1` не упаковывает шаблон в EXE.
+When using a shortcut, configure its `Start in` directory. The current `build.ps1` does not bundle the template.
 
-### Шаблон повреждён или не является DOCX
+### Template is corrupt or not a DOCX
 
-Откройте копию файла в Word или совместимом редакторе и сохраните как обычный `.docx`. Формат `.doc`, защищённый документ или файл с неверным расширением не подходит.
+Open a copy in Word or a compatible editor and save it as a standard `.docx`. Legacy `.doc`, protected documents, and files with a misleading extension are unsupported.
 
-### Переменные остались в документе
+### Variables remain in the rendered document
 
-Проверьте точные имена `{{ name }}`, `{{ login }}`, `{{ email }}` и `{{ password }}`. В Word одна переменная не должна быть разбита на несколько фрагментов с разным форматированием. Сравните переменные с ключами словаря `context` в Python.
+Verify the exact names `{{ name }}`, `{{ login }}`, `{{ email }}`, and `{{ password }}`. A variable must not be split across Word runs with different formatting. Compare it with the keys in the Python `context` dictionary.
 
-### Документ не сохраняется
+### Document cannot be saved
 
-Причиной может быть отсутствие прав на текущий каталог, уже открытый файл `<Фамилия Имя>.docx`, недопустимый символ в имени или ограничение защитного ПО. Закройте документ, смените тестовый каталог и повторите только рендеринг после проверки состояния AD.
+Possible causes include missing write permission, an open `<Surname First name>.docx`, invalid filename characters, or endpoint-protection restrictions. Close the document, switch to a test directory, and repeat only the render after checking AD state.
 
-## Ошибки сборки PyInstaller
+## PyInstaller build errors
 
-### Не находится `.venv`
+### `.venv` is missing
 
-`build.ps1` жёстко вызывает `.\.venv\Scripts\Activate.ps1`. Создайте окружение с этим именем или измените сценарий осознанно.
+`build.ps1` explicitly calls `.\.venv\Scripts\Activate.ps1`. Create an environment with that name or change the script deliberately.
 
-### Ошибка политики выполнения PowerShell
+### PowerShell execution policy error
 
-Разрешите сценарии только для текущего процесса:
+Allow scripts only for the current process:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\build.ps1
 ```
 
-Не меняйте политику всей машины без согласования.
+Do not change the entire machine policy without approval.
 
-### После сборки не работает транслитерация
+### Transliteration fails after packaging
 
-Проверьте вывод строки `$iuliia` и наличие схем в окружении:
+Inspect `$iuliia` and confirm that the schema directory exists:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python -c "import pathlib, iuliia; print(pathlib.Path(iuliia.__file__).parent / 'schemas')"
 ```
 
-Команда `--add-data` в `build.ps1` должна получить существующий каталог. Соберите диагностическую версию с консолью и изучите traceback.
+`--add-data` must receive an existing directory. Build a diagnostic console version and inspect the traceback.
 
-### EXE работает на машине разработчика, но не на другой
+### EXE works only on the development machine
 
-Проверьте архитектуру Windows, блокировку загруженного файла, антивирус, наличие внешнего `welcome2.docx`, рабочий каталог, сетевой доступ, DNS, доверие к сертификату LDAPS и права сервисной записи. Python на целевой машине для `--onefile` обычно не требуется, но внешние сетевые и шаблонные зависимости сохраняются.
+Check Windows architecture, downloaded-file blocking, antivirus, external `welcome2.docx`, working directory, network access, DNS, LDAPS certificate trust, and service-account permissions. A one-file build normally does not require Python on the target machine, but its network and template dependencies remain.
 
-## Сбор диагностических данных
+## Collecting diagnostic data
 
-Для внутренней заявки достаточно зафиксировать время, версию исходников или хэш EXE, этап операции, точный текст ошибки без пароля, FQDN контроллера, целевую OU, логин сотрудника, наличие объекта после сбоя и результаты безопасных сетевых проверок.
+An internal ticket should include time, source version or EXE hash, failed stage, exact error text without passwords, controller FQDN, target OU, employee login, object existence after failure, and safe network-check results.
 
-Не прикладывайте пароль сервисной учётной записи, начальный пароль сотрудника, готовый DOCX с реквизитами, приватные ключи, полный дамп окружения или неотфильтрованный сетевой трафик.
+Do not attach the service-account password, employee password, completed credential DOCX, private keys, a complete environment dump, or unfiltered packet capture.
 
-## Связанные разделы
+## Related documentation
 
-Карта параметров находится в [CONFIGURATION.md](CONFIGURATION.md), рабочая проверка результата — в [USAGE.md](USAGE.md), сборка — в [DEVELOPMENT.md](DEVELOPMENT.md), требования безопасности — в [SECURITY.md](../SECURITY.md).
+See [Configuration](CONFIGURATION.md), [Usage](USAGE.md), [Development](DEVELOPMENT.md), and [Security](../SECURITY.md).
